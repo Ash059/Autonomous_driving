@@ -1,0 +1,12 @@
+# Python virtual environments
+venv/
+env/
+__pycache__/
+
+# Ignore massive ML datasets and weights
+driving_dataset/
+*.pth
+*.pt
+
+# OS specific files
+.DS_Store
