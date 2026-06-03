@@ -10,3 +10,5 @@ driving_dataset/
 
 # OS specific files
 .DS_Store
+
+.env
