@@ -13,7 +13,7 @@ PI_IP_ADDRESS = os.getenv("PI_IP")
 PORT = 8486
 
 def main():
-    # Initialize a minimalist Pygame window to capture keyboard focus
+    # Initialize Pygame window to capture keyboard focus
     pygame.init()
     screen = pygame.display.set_mode((300, 100))
     pygame.display.set_caption("Pi Remote Controller")
@@ -33,41 +33,51 @@ def main():
     
     # --- Steering Smoothing Variables ---
     current_steering = 0.0
-    turn_speed = 1.5   # How fast the wheels turn to the side (units per second)
-    return_speed = 3.0 # How fast the wheels snap back to center (units per second)
+    turn_speed = 1.5   
+    return_speed = 3.0 
+
+    # --- Absolute State Trackers (Fixes Keyboard Ghosting) ---
+    throttle_active = 0
+    steering_left = False
+    steering_right = False
 
     while running:
-        # Get delta time (dt) in seconds (e.g., ~0.033 seconds for 30fps)
+        # Get delta time (dt) in seconds
         dt = clock.tick(30) / 1000.0  
         
-        # Check if the user closed the window
+        # 1. Catch absolute KEYDOWN and KEYUP events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                
+            elif event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    throttle_active = 1
+                elif event.key in (pygame.K_LEFT, pygame.K_a):
+                    steering_left = True
+                elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                    steering_right = True
+                    
+            elif event.type == pygame.KEYUP:
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    throttle_active = 0
+                elif event.key in (pygame.K_LEFT, pygame.K_a):
+                    steering_left = False
+                elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                    steering_right = False
 
-        # Read the current hardware array of all keys pressed
-        keys = pygame.key.get_pressed()
-
-        # --- Throttle Logic (Binary) ---
-        throttle_active = 0
-        if keys[pygame.K_UP] or keys[pygame.K_w]:
-            throttle_active = 1
-
-        # --- Smoothed Steering Logic (Continuous Float) ---
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            # Ramp towards -1.0
+        # 2. Apply smoothed math based on locked states
+        if steering_left:
             current_steering -= turn_speed * dt
             if current_steering < -1.0: 
                 current_steering = -1.0
                 
-        elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            # Ramp towards 1.0
+        elif steering_right:
             current_steering += turn_speed * dt
             if current_steering > 1.0: 
                 current_steering = 1.0
                 
         else:
-            # No keys pressed: auto-center the wheels mathematically
             if current_steering > 0:
                 current_steering -= return_speed * dt
                 if current_steering < 0: 
@@ -77,18 +87,15 @@ def main():
                 if current_steering > 0: 
                     current_steering = 0.0
 
-        # Pack the continuously changing float value and the binary throttle state
-        # ">fB" means: Big-Endian, 1 Float (4 bytes), 1 Unsigned Char (1 byte)
+        # Pack the data (Float for steering, Unsigned Char for throttle)
         packet = struct.pack(">fB", current_steering, throttle_active)
         
         try:
-            # Push to the Raspberry Pi over Wi-Fi
             client_socket.sendall(packet)
         except Exception as e:
             print(f"Transmission lost: {e}")
             break
 
-    # Clean up on exit
     pygame.quit()
     client_socket.close()
 
