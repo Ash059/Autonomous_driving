@@ -4,7 +4,34 @@ import cv2
 import csv
 import os
 import time
+from gpiozero import PWMOutputDevice, DigitalOutputDevice
 
+# --- Physical GPIO Pin Mapping (Using BCM Numbering) ---
+
+# --- MOTOR DRIVER 1: FRONT AXLE ---
+# Front-Left Motor
+FL_PWM = PWMOutputDevice(12)  # Driver 1 ENA
+FL_FWD = DigitalOutputDevice(5)   # Driver 1 IN1
+FL_REV = DigitalOutputDevice(6)   # Driver 1 IN2
+
+# Front-Right Motor
+FR_PWM = PWMOutputDevice(13)  # Driver 1 ENB
+FR_FWD = DigitalOutputDevice(23)  # Driver 1 IN3
+FR_REV = DigitalOutputDevice(24)  # Driver 1 IN4
+
+# --- MOTOR DRIVER 2: BACK AXLE ---
+# Back-Left Motor
+BL_PWM = PWMOutputDevice(18)  # Driver 2 ENA
+BL_FWD = DigitalOutputDevice(17)  # Driver 2 IN1
+BL_REV = DigitalOutputDevice(27)  # Driver 2 IN2
+
+# Back-Right Motor
+BR_PWM = PWMOutputDevice(19)  # Driver 2 ENB
+BR_FWD = DigitalOutputDevice(22)  # Driver 2 IN3
+BR_REV = DigitalOutputDevice(25)  # Driver 2 IN4
+
+# Define Base Speed as a percentage (0.0 to 1.0)
+BASE_THROTTLE = 0.6
 # --- Setup Dataset Directories ---
 DATASET_DIR = "driving_dataset"
 IMAGES_DIR = os.path.join(DATASET_DIR, "images")
@@ -22,21 +49,44 @@ JPEG_QUALITY = 60
 
 def drive_hardware(steering, throttle_active):
     """
-    Apply your differential drive equations to your physical GPIO pins.
+    Translates the steering vector into hardware PWM signals for a dual-driver 4WD setup.
     """
     if not throttle_active:
-        left_pwm = 0
-        right_pwm = 0
-    else:
-        if steering > 0:  # Turning Right
-            left_pwm = BASE_THROTTLE_PWM
-            right_pwm = int(BASE_THROTTLE_PWM * (1.0 - steering))
-        else:             # Turning Left
-            right_pwm = BASE_THROTTLE_PWM
-            left_pwm = int(BASE_THROTTLE_PWM * (1.0 - abs(steering)))
+        # Stop all motors
+        FL_PWM.value, FR_PWM.value = 0.0, 0.0
+        BL_PWM.value, BR_PWM.value = 0.0, 0.0
+        
+        FL_FWD.off(); FL_REV.off()
+        FR_FWD.off(); FR_REV.off()
+        BL_FWD.off(); BL_REV.off()
+        BR_FWD.off(); BR_REV.off()
+        return
 
-    # Insert your specific hardware GPIO/PWM write statements here
-    pass
+    # Set all 4 wheels to drive forward direction
+    FL_FWD.on(); FL_REV.off()
+    FR_FWD.on(); FR_REV.off()
+    BL_FWD.on(); BL_REV.off()
+    BR_FWD.on(); BR_REV.off()
+
+    # Differential Mixing Logic 
+    if steering > 0:  # Turning Right
+        left_speed = BASE_THROTTLE
+        right_speed = BASE_THROTTLE * (1.0 - steering)
+    else:             # Turning Left
+        right_speed = BASE_THROTTLE
+        left_speed = BASE_THROTTLE * (1.0 - abs(steering))
+
+    # Safety clamp: Ensure speeds never exceed 1.0 or drop below 0.0
+    left_speed = max(0.0, min(1.0, left_speed))
+    right_speed = max(0.0, min(1.0, right_speed))
+
+    # Send the Left speed to both Front-Left and Back-Left motors
+    FL_PWM.value = left_speed
+    BL_PWM.value = left_speed
+
+    # Send the Right speed to both Front-Right and Back-Right motors
+    FR_PWM.value = right_speed
+    BR_PWM.value = right_speed
 
 def main():
     cam = cv2.VideoCapture(0)
