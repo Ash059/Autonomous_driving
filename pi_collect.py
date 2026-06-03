@@ -79,7 +79,7 @@ def drive_hardware(steering, throttle_active):
     # Safety clamp: Ensure speeds never exceed 1.0 or drop below 0.0
     left_speed = max(0.0, min(1.0, left_speed))
     right_speed = max(0.0, min(1.0, right_speed))
-
+    print(f"DEBUG: Left={left_speed:.2f}, Right={right_speed:.2f}, Throttle={throttle_active}") # <-- ADD THIS LINE
     # Send the Left speed to both Front-Left and Back-Left motors
     FL_PWM.value = left_speed
     BL_PWM.value = left_speed

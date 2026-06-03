@@ -41,7 +41,7 @@ def main():
         dt = clock.tick(30) / 1000.0  
         
         # Check if the user closed the window
-        for event in pygame.get_event_loop():
+        for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
