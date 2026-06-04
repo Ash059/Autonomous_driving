@@ -80,8 +80,6 @@ def drive_hardware(steering, throttle):
 def main():
     # If index 0 throws the V4L2 error again, change this back to 1
     cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
     time.sleep(1.0) 
     if not cam.isOpened():
         print("CRITICAL ERROR: Camera failed to initialize! Check wiring or index.")
@@ -121,6 +119,7 @@ def main():
                     print("DEBUG: Camera is open, but dropped a frame!")
                 if ret:
                     # Compress the frame to save Wi-Fi bandwidth
+                    frame = cv2.resize(frame, (320, 240))
                     success, encoded_img = cv2.imencode('.jpg', frame, encode_param)
                     if success:
                         img_bytes = encoded_img.tobytes()
