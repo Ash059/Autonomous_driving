@@ -5,6 +5,7 @@ import csv
 import os
 import time
 from gpiozero import PWMOutputDevice, DigitalOutputDevice
+from picamera2 import Picamera2
 
 # --- Setup Dataset Directories ---
 DATASET_DIR = "driving_dataset"
@@ -18,8 +19,6 @@ if not os.path.exists(csv_path):
         writer.writerow(["image_path", "steering_angle", "throttle"])
 
 # --- Physical GPIO Pin Mapping (Dual L298N Drivers) ---
-
-# MOTOR DRIVER 1: FRONT AXLE
 FL_PWM = PWMOutputDevice(12)  
 FL_FWD = DigitalOutputDevice(5)   
 FL_REV = DigitalOutputDevice(6)   
@@ -28,7 +27,6 @@ FR_PWM = PWMOutputDevice(13)
 FR_FWD = DigitalOutputDevice(23)  
 FR_REV = DigitalOutputDevice(24)  
 
-# MOTOR DRIVER 2: BACK AXLE
 BL_PWM = PWMOutputDevice(18)  
 BL_FWD = DigitalOutputDevice(17)  
 BL_REV = DigitalOutputDevice(27)  
@@ -37,7 +35,6 @@ BR_PWM = PWMOutputDevice(19)
 BR_FWD = DigitalOutputDevice(22)  
 BR_REV = DigitalOutputDevice(25)  
 
-# --- Hardware Configuration Constants ---
 JPEG_QUALITY = 60        
 
 def drive_hardware(steering, throttle):
@@ -60,7 +57,7 @@ def drive_hardware(steering, throttle):
     BL_FWD.on(); BL_REV.off()
     BR_FWD.on(); BR_REV.off()
 
-    # The throttle now dictates the base speed dynamically
+    # Differential skid-steering math
     if steering > 0:  # Turning Right
         left_speed = throttle
         right_speed = throttle * (1.0 - steering)
@@ -68,7 +65,7 @@ def drive_hardware(steering, throttle):
         right_speed = throttle
         left_speed = throttle * (1.0 - abs(steering))
 
-    # Safety clamp: Ensure speeds never exceed 1.0 or drop below 0.0
+    # Safety clamp
     left_speed = max(0.0, min(1.0, left_speed))
     right_speed = max(0.0, min(1.0, right_speed))
 
@@ -78,18 +75,13 @@ def drive_hardware(steering, throttle):
     BR_PWM.value = right_speed
 
 def main():
-    # If index 0 throws the V4L2 error again, change this back to 1
-    cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
-    # 1. Force the stream into MJPEG format so OpenCV knows exactly how to decode the bytes
-    cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-    
-    # 2. Now we can safely set the hardware resolution without it crashing!
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+    print("Initializing direct GPU Camera connection...")
+    picam2 = Picamera2()
+    # Force the GPU to output BGR arrays to perfectly match OpenCV's math
+    config = picam2.create_preview_configuration(main={"size": (320, 240), "format": "BGR888"})
+    picam2.configure(config)
+    picam2.start()
     time.sleep(1.0) 
-    if not cam.isOpened():
-        print("CRITICAL ERROR: Camera failed to initialize! Check wiring or index.")
-        exit()
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -108,24 +100,26 @@ def main():
 
         try:
             while True:
-                # We expect 8 bytes (Two floats)
+                # 1. Receive Controls (8 bytes = Two floats)
                 data = conn.recv(8)
                 if len(data) != 8:
                     break
 
-                # Unpack the two floats
                 steering, throttle = struct.unpack(">ff", data)
-
                 drive_hardware(steering, throttle)
 
-                # Always read camera to provide a live feed to the laptop
-                ret, frame = cam.read()
+                # 2. Pull the frame directly from the Pi's GPU memory
+                try:
+                    frame = picam2.capture_array()
+                    ret = True
+                except Exception as e:
+                    print(f"Hardware dropped frame: {e}")
+                    ret = False
+                
                 image_sent = False
-                if not ret:
-                    print("DEBUG: Camera is open, but dropped a frame!")
+
                 if ret:
                     # Compress the frame to save Wi-Fi bandwidth
-                    #frame = cv2.resize(frame, (320, 240))
                     success, encoded_img = cv2.imencode('.jpg', frame, encode_param)
                     if success:
                         img_bytes = encoded_img.tobytes()
@@ -148,16 +142,17 @@ def main():
                             
                             if frame_count % 100 == 0:
                                 print(f"Successfully recorded {frame_count} frames.")
-                                
+
+                # FAIL-SAFE: If camera dropped a frame, send a 0-byte header so laptop doesn't freeze
                 if not image_sent:
-                    # FAIL-SAFE: If camera dropped a frame, send a 0-byte header so laptop doesn't freeze
                     conn.sendall(struct.pack(">L", 0))
+
         except KeyboardInterrupt:
             print("\nStopping manual data collection session.")
         finally:
             print("Cleaning up resources...")
             drive_hardware(0.0, 0.0) 
-            cam.release()
+            picam2.stop()
             conn.close()
             server_socket.close()
 
