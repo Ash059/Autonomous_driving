@@ -83,6 +83,9 @@ def main():
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
     time.sleep(1.0) 
+    if not cam.isOpened():
+        print("CRITICAL ERROR: Camera failed to initialize! Check wiring or index.")
+        exit()
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
