@@ -79,7 +79,7 @@ def drive_hardware(steering, throttle):
 
 def main():
     # If index 0 throws the V4L2 error again, change this back to 1
-    cam = cv2.VideoCapture(0)
+    cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
     time.sleep(1.0) 
