@@ -3,17 +3,31 @@ import struct
 import pygame
 import time
 import os
+import cv2
+import numpy as np
 from dotenv import load_dotenv
 
+# Load IP addresses from the hidden .env file
 load_dotenv()
 
 PI_IP_ADDRESS = os.getenv("PI_IP")
 PORT = 8486
 
+def recv_all(sock, count):
+    """Safely receive a specific number of bytes over the network."""
+    buf = b''
+    while count:
+        newbuf = sock.recv(count)
+        if not newbuf: return None
+        buf += newbuf
+        count -= len(newbuf)
+    return buf
+
 def main():
     pygame.init()
     pygame.joystick.init()
     
+    # Initialize a minimalist Pygame window to capture keyboard focus
     screen = pygame.display.set_mode((300, 100))
     pygame.display.set_caption("Pi Remote Controller")
 
@@ -29,6 +43,7 @@ def main():
     else:
         print("No controller found. Falling back to Keyboard smoothing mode.")
 
+    # Set up the network socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     print(f"Connecting to Pi at {PI_IP_ADDRESS}:{PORT}...")
     try:
@@ -106,12 +121,29 @@ def main():
         packet = struct.pack(">ff", final_steering, final_throttle)
         
         try:
+            # 1. Send controls to Pi
             client_socket.sendall(packet)
+            
+            # 2. Receive and Display Live Frame from Pi
+            length_buf = recv_all(client_socket, 4)
+            if length_buf:
+                img_size = struct.unpack(">L", length_buf)[0]
+                img_data = recv_all(client_socket, img_size)
+                if img_data:
+                    # Decode the raw bytes back into an image
+                    np_data = np.frombuffer(img_data, dtype=np.uint8)
+                    frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
+                    
+                    # Display the feed
+                    cv2.imshow("Live Pi Feed", frame)
+                    cv2.waitKey(1)
+
         except Exception as e:
             print(f"Transmission lost: {e}")
             break
 
     pygame.quit()
+    cv2.destroyAllWindows()
     client_socket.close()
 
 if __name__ == "__main__":
