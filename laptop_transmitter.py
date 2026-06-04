@@ -128,15 +128,17 @@ def main():
             length_buf = recv_all(client_socket, 4)
             if length_buf:
                 img_size = struct.unpack(">L", length_buf)[0]
-                img_data = recv_all(client_socket, img_size)
-                if img_data:
-                    # Decode the raw bytes back into an image
-                    np_data = np.frombuffer(img_data, dtype=np.uint8)
-                    frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
-                    
-                    # Display the feed
-                    cv2.imshow("Live Pi Feed", frame)
-                    cv2.waitKey(1)
+                
+                # ONLY wait for image data if the Pi actually sent a frame
+                if img_size > 0:
+                    img_data = recv_all(client_socket, img_size)
+                    if img_data:
+                        np_data = np.frombuffer(img_data, dtype=np.uint8)
+                        frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
+                        
+                        # Display the feed
+                        cv2.imshow("Live Pi Feed", frame)
+                        cv2.waitKey(1)
 
         except Exception as e:
             print(f"Transmission lost: {e}")

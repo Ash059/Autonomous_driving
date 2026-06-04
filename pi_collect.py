@@ -116,6 +116,8 @@ def main():
 
                 # Always read camera to provide a live feed to the laptop
                 ret, frame = cam.read()
+                image_sent = False
+                
                 if ret:
                     # Compress the frame to save Wi-Fi bandwidth
                     success, encoded_img = cv2.imencode('.jpg', frame, encode_param)
@@ -124,6 +126,7 @@ def main():
                         
                         # Send the live frame back to the laptop
                         conn.sendall(struct.pack(">L", len(img_bytes)) + img_bytes)
+                        image_sent = True
 
                         # ONLY save to the dataset if you are pressing the gas trigger
                         if throttle > 0.0:
@@ -131,17 +134,18 @@ def main():
                             relative_img_path = os.path.join("images", frame_filename)
                             full_img_path = os.path.join(IMAGES_DIR, frame_filename)
 
-                            # Save the exact bytes we already encoded
                             with open(full_img_path, 'wb') as f:
                                 f.write(img_bytes)
                                 
-                            # Log the exact variable throttle position used
                             csv_writer.writerow([relative_img_path, steering, throttle])
                             frame_count += 1
                             
                             if frame_count % 100 == 0:
                                 print(f"Successfully recorded {frame_count} frames.")
-
+                                
+                if not image_sent:
+                    # FAIL-SAFE: If camera dropped a frame, send a 0-byte header so laptop doesn't freeze
+                    conn.sendall(struct.pack(">L", 0))
         except KeyboardInterrupt:
             print("\nStopping manual data collection session.")
         finally:
