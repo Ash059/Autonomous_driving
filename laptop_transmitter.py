@@ -62,7 +62,9 @@ def main():
     return_speed = 3.0 
     steering_left = False
     steering_right = False
-
+    # Force the OpenCV window to exist immediately
+    cv2.namedWindow("Live Pi Feed", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Live Pi Feed", 640, 480)
     while running:
         dt = clock.tick(30) / 1000.0  
         

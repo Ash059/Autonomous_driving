@@ -117,7 +117,8 @@ def main():
                 # Always read camera to provide a live feed to the laptop
                 ret, frame = cam.read()
                 image_sent = False
-                
+                if not ret:
+                    print("DEBUG: Camera is open, but dropped a frame!")
                 if ret:
                     # Compress the frame to save Wi-Fi bandwidth
                     success, encoded_img = cv2.imencode('.jpg', frame, encode_param)
