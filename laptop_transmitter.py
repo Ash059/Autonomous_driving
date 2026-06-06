@@ -58,7 +58,7 @@ def main():
     
     # Keyboard Smoothing Variables
     current_steering = 0.0
-    turn_speed = 1.5   
+    turn_speed = 2   
     return_speed = 3.0 
     steering_left = False
     steering_right = False
@@ -96,6 +96,8 @@ def main():
             final_throttle = (trigger_val + 1.0) / 2.0 
             if final_throttle < 0.05: 
                 final_throttle = 0.0
+            if final_throttle > 0.6:
+                final_throttle = 0.6 # Limit max throttle to 0.6 for controller
                 
         else:
             # Fallback Keyboard Logic

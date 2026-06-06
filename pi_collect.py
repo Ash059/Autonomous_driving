@@ -111,6 +111,8 @@ def main():
                 # 2. Pull the frame directly from the Pi's GPU memory
                 try:
                     frame = picam2.capture_array()
+                    # --- NEW: Flip the colors from RGB back to BGR for OpenCV ---
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                     ret = True
                 except Exception as e:
                     print(f"Hardware dropped frame: {e}")
