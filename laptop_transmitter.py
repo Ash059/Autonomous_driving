@@ -96,8 +96,8 @@ def main():
             final_throttle = (trigger_val + 1.0) / 2.0 
             if final_throttle < 0.05: 
                 final_throttle = 0.0
-            if final_throttle > 0.6:
-                final_throttle = 0.6 # Limit max throttle to 0.6 for controller
+            if final_throttle > 0.4:
+                final_throttle = 0.4 # Limit max throttle to 0.6 for controller
                 
         else:
             # Fallback Keyboard Logic
