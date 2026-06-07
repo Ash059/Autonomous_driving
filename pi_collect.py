@@ -38,11 +38,7 @@ BR_REV = DigitalOutputDevice(25)
 JPEG_QUALITY = 60        
 
 def drive_hardware(steering, throttle):
-    """
-    Translates the steering vector and analog throttle into hardware PWM signals.
-    """
     if throttle == 0.0:
-        # Stop all motors
         FL_PWM.value, FR_PWM.value = 0.0, 0.0
         BL_PWM.value, BR_PWM.value = 0.0, 0.0
         FL_FWD.off(); FL_REV.off()
@@ -51,21 +47,18 @@ def drive_hardware(steering, throttle):
         BR_FWD.off(); BR_REV.off()
         return
 
-    # Set all 4 wheels to drive forward direction
     FL_FWD.on(); FL_REV.off()
     FR_FWD.on(); FR_REV.off()
     BL_FWD.on(); BL_REV.off()
     BR_FWD.on(); BR_REV.off()
 
-    # Differential skid-steering math
-    if steering > 0:  # Turning Right
+    if steering > 0:  
         left_speed = throttle
         right_speed = throttle * (1.0 - steering)
-    else:             # Turning Left
+    else:             
         right_speed = throttle
         left_speed = throttle * (1.0 - abs(steering))
 
-    # Safety clamp
     left_speed = max(0.0, min(1.0, left_speed))
     right_speed = max(0.0, min(1.0, right_speed))
 
@@ -77,8 +70,13 @@ def drive_hardware(steering, throttle):
 def main():
     print("Initializing direct GPU Camera connection...")
     picam2 = Picamera2()
-    # Force the GPU to output BGR arrays to perfectly match OpenCV's math
-    config = picam2.create_preview_configuration(main={"size": (320, 240), "format": "BGR888"})
+    
+    # Force 'viewfinder' mode to use the full 4:3 sensor area to prevent tight cropping
+    config = picam2.create_preview_configuration(
+        main={"size": (320, 240), "format": "BGR888"},
+        transform=None,
+        use_case="viewfinder"
+    )
     picam2.configure(config)
     picam2.start()
     time.sleep(1.0) 
@@ -92,7 +90,16 @@ def main():
     conn, addr = server_socket.accept()
     print(f"Connected to laptop controller at: {addr}")
 
-    frame_count = 0
+    # --- Auto-Resume Frame Counting ---
+    existing_frames = [f for f in os.listdir(IMAGES_DIR) if f.startswith('frame_') and f.endswith('.jpg')]
+    if existing_frames:
+        frame_numbers = [int(f.replace('frame_', '').replace('.jpg', '')) for f in existing_frames]
+        frame_count = max(frame_numbers) + 1
+        print(f"Found existing data. Resuming collection from frame {frame_count}...")
+    else:
+        frame_count = 0
+        print("No previous data found. Starting fresh from frame 0...")
+
     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY]
 
     with open(csv_path, 'a', newline='') as csv_file:
@@ -100,7 +107,6 @@ def main():
 
         try:
             while True:
-                # 1. Receive Controls (8 bytes = Two floats)
                 data = conn.recv(8)
                 if len(data) != 8:
                     break
@@ -108,11 +114,9 @@ def main():
                 steering, throttle = struct.unpack(">ff", data)
                 drive_hardware(steering, throttle)
 
-                # 2. Pull the frame directly from the Pi's GPU memory
                 try:
                     frame = picam2.capture_array()
-                    # --- NEW: Flip the colors from RGB back to BGR for OpenCV ---
-                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) # Color fix
                     ret = True
                 except Exception as e:
                     print(f"Hardware dropped frame: {e}")
@@ -121,16 +125,13 @@ def main():
                 image_sent = False
 
                 if ret:
-                    # Compress the frame to save Wi-Fi bandwidth
                     success, encoded_img = cv2.imencode('.jpg', frame, encode_param)
                     if success:
                         img_bytes = encoded_img.tobytes()
                         
-                        # Send the live frame back to the laptop
                         conn.sendall(struct.pack(">L", len(img_bytes)) + img_bytes)
                         image_sent = True
 
-                        # ONLY save to the dataset if you are pressing the gas trigger
                         if throttle > 0.0:
                             frame_filename = f"frame_{frame_count:06d}.jpg"
                             relative_img_path = os.path.join("images", frame_filename)
@@ -145,7 +146,6 @@ def main():
                             if frame_count % 100 == 0:
                                 print(f"Successfully recorded {frame_count} frames.")
 
-                # FAIL-SAFE: If camera dropped a frame, send a 0-byte header so laptop doesn't freeze
                 if not image_sent:
                     conn.sendall(struct.pack(">L", 0))
 
